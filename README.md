@@ -229,3 +229,202 @@ from .models import Booking
 # Register your models here.
 admin.site.register(Booking)
 ```
+
+## Admin
+
+### Managing users
+
+One admin.py we need to setup the user
+
+```
+from django.contrib, import admin
+# Register your models here.
+from django.contrib.auth.models, import User
+# Unregister the provided model admin:
+admin.site.unregister(User)
+```
+
+To register our own admin, use @admin.register() decorator. Give the user a model as the argument. Decorate a sub-class of UserAdmin class.
+
+```
+from django.contrib.auth.admin import UserAdmin
+@admin.register(User)
+class NewAdmin(UserAdmin):
+    pass
+```
+
+The user model has a field date_joined. Suppose you want that its value given at the time of creating a new user should never be changed. So, keep this field in the readonly_fields list. Include this at the end of admin.py
+
+```
+from django.contrib.auth.admin import UserAdmin
+@admin.register(User)
+class NewAdmin(UserAdmin):
+    readonly_fields = [
+        'date_joined',
+    ]
+```
+
+Django Admin’s change form will show date_joined field as disabled, thereby, it will not be editable.
+
+The UserAdmin class (the base class for NewAdmin class that you have registered in the admin site) has a method known as get_form(). You need to override it to disable the username field in it.
+
+```
+def get_form(self, request, obj=None, **kwargs):
+        form = super().get_form(request, obj, **kwargs)
+```
+
+Next, verify if the current user is a super user. If yes, disable the username field in the form.
+
+```
+is_superuser = request.user.is_superuser
+
+        if not is_superuser:
+            form.base_fields['username'].disabled = True
+```
+
+The NewAdmin class that is registered as admin will now look like this:
+
+```
+from django.contrib.auth.admin import UserAdmin
+@admin.register(User)
+class NewAdmin(UserAdmin):
+    def get_form(self, request, obj=None, **kwargs):
+        form = super().get_form(request, obj, **kwargs)
+        is_superuser = request.user.is_superuser
+
+        if not is_superuser:
+            form.base_fields['username'].disabled = True
+
+        return form
+```
+
+For using we need to set on installed_apps:
+
+```
+INSTALLED_APPS = [
+    'django.contrib.admin',
+    'django.contrib.auth',
+    'django.contrib.contenttypes',
+    'django.contrib.sessions',
+    'django.contrib.messages',
+    'django.contrib.staticfiles',
+    'myapp.apps.MyappConfig',
+]
+```
+
+### Permissions
+
+Let’s assume that there is a Product model in a Django app named myapp. Here, a custom permission called change_category has been defined.
+
+```
+class Product(models.Model):
+    ProductID: models.IntegerField()
+    name : models.TextField()
+    category : models.TextField
+    class Meta:
+        permissions = [('can_change_category', 'Can change category')]
+```
+
+This name of permission will be visible in the list of available user permissions when a new user is added or an existing group is edited.
+
+### Enforcing permissions at the view level
+
+If a user has logged in and has been authenticated, its details are available to the view function in the form of request.user object. If not, the value of request.user is an instance of AnonymousUser. In that case, the permission to call a view can be denied as follows:
+
+```
+from django.core.exceptions import PermissionDenied
+def myview(request):
+    if request.user.is_anonymous():
+        raise PermissionDenied()
+```
+
+You can decorate the view with a login_required decorator. It only allows access for logged users.
+
+```
+from django.http import HttpResponse
+from django.contrib.auth.decorators import login_required
+ @login_required
+def myview(request):
+    return HttpResponse("Hi, you're logged!")
+```
+
+Another way of restricting access to a view is by using the @user_passes_test()decorator. It takes one mandatory argument, which is a function returning True or False. If True is returned, the decorated view function defined below it is invoked.
+
+Let’s define a function testpermission(). It returns True if the user is authenticated and has a change_category permission.
+
+```
+def testpermission(user):
+    if user.is_authenticated() and user.has_perm("myapp.change_category"):
+        return True
+    else:
+        return False
+```
+
+This function is then used as an argument to the @user_passes_test() decorator. The view function defined below it will be invoked if the testpermission() function returns True.
+
+```
+from django.contrib.auth.decorators import user_passes_test
+
+@user_passes_test(testpermission)
+def change_ctg(request):
+    # Logic for making change to category of product model instance
+```
+
+The user_passes_test() can be given an additional argument – login_url. The user will be redirected to this URL if the testpermission() function returns False. Typically, it is mapped to a view that renders a login page.
+
+Another method to enforce permission at the view level is with the @permission_required() decorator. Unless the user possesses the permission mentioned as an argument, the view function won’t be called.
+
+```
+from django.contrib.auth.decorators import permission_required
+
+@permission_required("myapp.change_category")
+def store_creator(request):
+    # Logic for making change to category of product model instance
+```
+
+To enforce permissions on a class-based view, you need to use PermissionRequiredMixin and set the permission_required attribute of the view class to the permission you want to enforce.
+
+Here is an example:
+
+Assuming that a product model is present in models.py. The ProductListView class view renders a list of products only if the user has view permission on this model.
+
+```
+from django.contrib.auth.mixins import PermissionRequiredMixin
+from django.views.generic import ListView
+
+from .models import Product
+
+class ProductListView(PermissionRequiredMixin, ListView):
+    permission_required = "myapp.view_product"
+    template_name = "product.html"
+    model = Product
+```
+
+### Permissions in Template
+
+You can check various user attributes, such as is_authenticated and render the information on the web page accordingly. A typical template looks like this:
+
+```
+<html>
+<body>
+{% if user.is_authenticated %}
+         {#  to be rendeed if the user has been authenticated  #}
+    {% endif %}
+<body>
+</html>
+```
+
+### Enfonrcing permissions in URL patterns
+
+To configure the pattern, you use the url() function, in which the permission decorators can be used.
+
+```
+from django.conf.urls import url
+from django.contrib.auth.decorators import login_required, permission_required
+
+urlpatterns = [
+    url(r'^users_only/', login_required(myview)),
+
+    url(r'^category/', permission_required('myapp.change_category', login_url='login')(myview)),
+]
+```
