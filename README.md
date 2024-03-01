@@ -428,3 +428,43 @@ urlpatterns = [
     url(r'^category/', permission_required('myapp.change_category', login_url='login')(myview)),
 ]
 ```
+
+## Database Config
+
+Let's use MySQL!!
+
+Install the MySQL server, download the installer appropriate for your operating system
+
+```
+mysql -u root -p
+```
+
+create the database:
+
+```
+Create database mydatabase;
+```
+
+You will need to install in your project mysql
+
+```
+pip3 install mysqlclient
+```
+
+On settings.py will need to setup too:
+
+```
+DATABASES = {
+    'default': {
+        'ENGINE': 'django.db.backends.mysql',
+        'NAME': 'mydatabase',
+        'USER': 'root',
+        'PASSWORD': '',
+        'HOST': '127.0.0.1',
+        'PORT': '3306',
+        'OPTIONS': {
+            'init_command': "SET sql_mode='STRICT_TRANS_TABLES'"
+        }
+    }
+}
+```
